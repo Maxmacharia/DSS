@@ -17,7 +17,7 @@ def init_ee(service_account_email: str, key_file: str):
 # ROI helpers
 def get_kajiado_roi():
     admin = ee.FeatureCollection("FAO/GAUL_SIMPLIFIED_500m/2015/level2")
-    roi = admin.filter(ee.Filter.eq('ADM2_NAME', 'Kajiado'))
+    roi = admin.filter(ee.Filter.inList('ADM2_NAME', ['Nairobi', 'Murang\'a', 'Kiambu', 'Machakos', 'Kajiado']))
     return roi
 
 # Convert month number to two-digit string

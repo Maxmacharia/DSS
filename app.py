@@ -12,8 +12,8 @@ from gee_client import (
 from map_utils import build_base_map, add_ee_layer, display_map_in_streamlit
 from charts import fetch_time_series_mean, plot_time_series
 
-st.set_page_config(layout='wide', page_title='GEE DSS - Kajiado')
-st.title('Decision Support System — Kajiado (Streamlit + GEE)')
+st.set_page_config(layout='wide', page_title='GEE DSS - Nairobi metropolitan')
+st.title('Droughts and Floods Decision Support System')
 
 # Sidebar: query inputs
 st.sidebar.header('Query Inputs')
@@ -21,7 +21,7 @@ year = st.sidebar.number_input('Year to visualise (single year)', min_value=2015
 month = st.sidebar.selectbox('Month (for climatology & anomaly)', list(range(1, 13)), index=2)
 
 # ROI controls
-roi_choice = st.sidebar.radio('ROI option', ['Default: Kajiado', 'Upload GeoJSON/SHAPEFILE', 'Draw polygon (not implemented)'])
+roi_choice = st.sidebar.radio('ROI option', ['Default: Nairobi metropolitan', 'Upload GeoJSON/SHAPEFILE(not implemented)', 'Draw polygon (not implemented)'])
 uploaded_roi = None
 if roi_choice == 'Upload GeoJSON/SHAPEFILE':
     uploaded = st.sidebar.file_uploader('Upload GeoJSON or ZIP Shapefile', type=['geojson', 'json', 'zip', 'shp'])
@@ -135,38 +135,37 @@ if ee_ready:
     folium.LayerControl().add_to(m)
     display_map_in_streamlit(m)
 
-    # Charts
+    # Charts stacked vertically in one column
     st.subheader('Time Series Charts (2015-2025)')
-    col1, col2, col3 = st.columns(3)
 
-    with col1:
-        st.write('Rainfall Anomaly')
-        anomaly_df = fetch_time_series_mean(coll['anomaly_coll'], roi_fc.geometry(), band_name='anomaly')
-        if not anomaly_df.empty:
-            fig = plot_time_series(anomaly_df, 'Rainfall Anomaly - Kajiado (2015–2025)', 'Anomaly (mm)')
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.write('No anomaly data')
+    # Rainfall Anomaly
+    st.write('Rainfall Anomaly')
+    anomaly_df = fetch_time_series_mean(coll['anomaly_coll'], roi_fc.geometry(), band_name='anomaly')
+    if not anomaly_df.empty:
+        fig = plot_time_series(anomaly_df, 'Rainfall Anomaly - Kajiado (2015–2025)', 'Anomaly (mm)')
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.write('No anomaly data')
 
-    with col2:
-        st.write('SPI Monthly Mean')
-        spi_df = fetch_time_series_mean(coll['spi_coll'], roi_fc.geometry(), band_name='spi')
-        if not spi_df.empty:
-            fig2 = plot_time_series(spi_df, 'SPI Monthly Mean - Kajiado (2015–2025)', 'SPI')
-            st.plotly_chart(fig2, use_container_width=True)
-        else:
-            st.write('No SPI data')
+    # SPI Monthly Mean
+    st.write('SPI Monthly Mean')
+    spi_df = fetch_time_series_mean(coll['spi_coll'], roi_fc.geometry(), band_name='spi')
+    if not spi_df.empty:
+        fig2 = plot_time_series(spi_df, 'SPI Monthly Mean - Kajiado (2015–2025)', 'SPI')
+        st.plotly_chart(fig2, use_container_width=True)
+    else:
+        st.write('No SPI data')
 
-    with col3:
-        st.write('Monthly Rainfall')
-        rain_df = fetch_time_series_mean(coll['monthly_rain'], roi_fc.geometry(), band_name='precipitation')
-        if rain_df.empty:
-            rain_df = fetch_time_series_mean(coll['monthly_rain'], roi_fc.geometry(), band_name='sum')
-        if not rain_df.empty:
-            fig3 = plot_time_series(rain_df, 'Monthly Rainfall - Kajiado (2015–2025)', 'Rainfall (mm)')
-            st.plotly_chart(fig3, use_container_width=True)
-        else:
-            st.write('No monthly rainfall data')
+    # Monthly Rainfall
+    st.write('Monthly Rainfall')
+    rain_df = fetch_time_series_mean(coll['monthly_rain'], roi_fc.geometry(), band_name='precipitation')
+    if rain_df.empty:
+        rain_df = fetch_time_series_mean(coll['monthly_rain'], roi_fc.geometry(), band_name='sum')
+    if not rain_df.empty:
+        fig3 = plot_time_series(rain_df, 'Monthly Rainfall - Kajiado (2015–2025)', 'Rainfall (mm)')
+        st.plotly_chart(fig3, use_container_width=True)
+    else:
+        st.write('No monthly rainfall data')
 
 else:
     st.info('Please authenticate Earth Engine using the `earthengine authenticate` command before running the app.')
