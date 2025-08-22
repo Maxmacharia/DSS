@@ -1,6 +1,8 @@
+
 import streamlit as st
 import ee
 import geopandas as gpd
+import os
 from shapely.geometry import mapping
 import folium
 
@@ -15,13 +17,33 @@ from charts import fetch_time_series_mean, plot_time_series
 st.set_page_config(layout='wide', page_title='GEE DSS - Nairobi metropolitan')
 st.title('Droughts and Floods Decision Support System')
 
+# 🔑 EE Initialization
+SERVICE_ACCOUNT = os.getenv("EE_SERVICE_ACCOUNT")
+KEY_FILE = os.getenv("EE_KEY_FILE", "service_account.json")  # ensure this file exists in your repo
+
+ee_ready = False
+try:
+    if SERVICE_ACCOUNT and os.path.exists(KEY_FILE):
+        init_ee(SERVICE_ACCOUNT, KEY_FILE)
+        ee_ready = True
+        st.sidebar.success("Earth Engine initialized with service account")
+    else:
+        ee.Initialize()
+        ee_ready = True
+        st.sidebar.success("Earth Engine initialized with local credentials")
+except Exception as e:
+    st.sidebar.error(f"Failed to initialize Earth Engine: {e}")
+
 # Sidebar: query inputs
 st.sidebar.header('Query Inputs')
 year = st.sidebar.number_input('Year to visualise (single year)', min_value=2015, max_value=2025, value=2023, step=1)
 month = st.sidebar.selectbox('Month (for climatology & anomaly)', list(range(1, 13)), index=2)
 
 # ROI controls
-roi_choice = st.sidebar.radio('ROI option', ['Default: Nairobi metropolitan', 'Upload GeoJSON/SHAPEFILE(not implemented)', 'Draw polygon (not implemented)'])
+roi_choice = st.sidebar.radio(
+    'ROI option',
+    ['Default: Nairobi metropolitan', 'Upload GeoJSON/SHAPEFILE(not implemented)', 'Draw polygon (not implemented)']
+)
 uploaded_roi = None
 if roi_choice == 'Upload GeoJSON/SHAPEFILE':
     uploaded = st.sidebar.file_uploader('Upload GeoJSON or ZIP Shapefile', type=['geojson', 'json', 'zip', 'shp'])
@@ -32,20 +54,8 @@ if roi_choice == 'Upload GeoJSON/SHAPEFILE':
         except Exception as e:
             st.sidebar.error(f'Failed to read file: {e}')
 
-# Initialize EE automatically
-try:
-    ee.Initialize()
-    ee_ready = True
-    st.sidebar.success('Earth Engine initialized with default credentials')
-except Exception:
-    ee_ready = False
-    st.warning('Earth Engine not initialized. Please run `earthengine authenticate` locally before starting the app.')
-
 # Build or load ROI
-if roi_choice == 'Default: Kajiado':
-    roi_fc = get_kajiado_roi()
-else:
-    roi_fc = uploaded_roi if uploaded_roi is not None else get_kajiado_roi()
+roi_fc = uploaded_roi if uploaded_roi is not None else get_kajiado_roi()
 
 # Main compute & caching
 @st.cache_data(show_spinner=True)
@@ -142,7 +152,7 @@ if ee_ready:
     st.write('Rainfall Anomaly')
     anomaly_df = fetch_time_series_mean(coll['anomaly_coll'], roi_fc.geometry(), band_name='anomaly')
     if not anomaly_df.empty:
-        fig = plot_time_series(anomaly_df, 'Rainfall Anomaly - Kajiado (2015–2025)', 'Anomaly (mm)')
+        fig = plot_time_series(anomaly_df, 'Rainfall Anomaly - Nairobi Metro (2015–2025)', 'Anomaly (mm)')
         st.plotly_chart(fig, use_container_width=True)
     else:
         st.write('No anomaly data')
@@ -151,7 +161,7 @@ if ee_ready:
     st.write('SPI Monthly Mean')
     spi_df = fetch_time_series_mean(coll['spi_coll'], roi_fc.geometry(), band_name='spi')
     if not spi_df.empty:
-        fig2 = plot_time_series(spi_df, 'SPI Monthly Mean - Kajiado (2015–2025)', 'SPI')
+        fig2 = plot_time_series(spi_df, 'SPI Monthly Mean - Nairobi Metro (2015–2025)', 'SPI')
         st.plotly_chart(fig2, use_container_width=True)
     else:
         st.write('No SPI data')
@@ -162,10 +172,10 @@ if ee_ready:
     if rain_df.empty:
         rain_df = fetch_time_series_mean(coll['monthly_rain'], roi_fc.geometry(), band_name='sum')
     if not rain_df.empty:
-        fig3 = plot_time_series(rain_df, 'Monthly Rainfall - Kajiado (2015–2025)', 'Rainfall (mm)')
+        fig3 = plot_time_series(rain_df, 'Monthly Rainfall - Nairobi Metro (2015–2025)', 'Rainfall (mm)')
         st.plotly_chart(fig3, use_container_width=True)
     else:
         st.write('No monthly rainfall data')
 
 else:
-    st.info('Please authenticate Earth Engine using the `earthengine authenticate` command before running the app.')
+    st.info('Please set up your Earth Engine service account & key file in Streamlit Cloud.')

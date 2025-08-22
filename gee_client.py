@@ -1,28 +1,57 @@
 import ee
 import json
-from pathlib import Path
+import streamlit as st
 
-# Initialize Earth Engine with a service account key JSON
-def init_ee(service_account_email: str, key_file: str):
-    if ee.data._credentials is None:
-        credentials = ee.ServiceAccountCredentials(service_account_email, key_file)
-        ee.Initialize(credentials)
-    else:
-        try:
-            ee.Initialize()
-        except Exception:
+# Initialize Earth Engine
+def init_ee(service_account_email: str = None, key_file: str = None):
+    """Initialize Earth Engine.
+    - On Streamlit Cloud: reads from st.secrets["gee_service_account"].
+    - Locally: uses normal 'earthengine authenticate' credentials.
+    - Optionally: can still accept a service_account_email + key_file path.
+    """
+    try:
+        if ee.data._credentials:  # Already initialized
+            return
+
+        # Case 1: Streamlit Cloud → use secrets
+        if "gee_service_account" in st.secrets:
+            service_account_info = st.secrets["gee_service_account"]
+            credentials = ee.ServiceAccountCredentials(
+                email=service_account_info["client_email"],
+                key_data=json.dumps(service_account_info)
+            )
+            ee.Initialize(credentials)
+            print("✅ Earth Engine initialized with Streamlit secrets (service account).")
+            return
+
+        # Case 2: Provided service account file
+        if service_account_email and key_file:
             credentials = ee.ServiceAccountCredentials(service_account_email, key_file)
             ee.Initialize(credentials)
+            print("✅ Earth Engine initialized with provided key file.")
+            return
+
+        # Case 3: Local dev → default OAuth token
+        ee.Initialize()
+        print("✅ Earth Engine initialized with local user OAuth.")
+
+    except Exception as e:
+        raise RuntimeError(f"❌ Earth Engine initialization failed: {e}")
+
 
 # ROI helpers
 def get_kajiado_roi():
     admin = ee.FeatureCollection("FAO/GAUL_SIMPLIFIED_500m/2015/level2")
-    roi = admin.filter(ee.Filter.inList('ADM2_NAME', ['Nairobi', 'Murang\'a', 'Kiambu', 'Machakos', 'Kajiado']))
+    roi = admin.filter(ee.Filter.inList('ADM2_NAME', [
+        'Nairobi', 'Murang\'a', 'Kiambu', 'Machakos', 'Kajiado'
+    ]))
     return roi
+
 
 # Convert month number to two-digit string
 def mm(m):
     return ee.Number(m).format('%02d')
+
 
 # Helper to filter out images with 0 bands
 def filter_empty(img):
@@ -31,6 +60,7 @@ def filter_empty(img):
         img,
         None
     )
+
 
 # Build monthly_rainfall ImageCollection
 def build_monthly_rainfall(roi):
@@ -43,6 +73,7 @@ def build_monthly_rainfall(roi):
 
     def per_year(year):
         year = ee.Number(year)
+
         def per_month(m):
             m = ee.Number(m)
             start = ee.Date.fromYMD(year, m, 1)
@@ -57,11 +88,13 @@ def build_monthly_rainfall(roi):
                 }),
                 None
             )
+
         return months.map(per_month)
 
     coll = ee.ImageCollection(years.map(per_year).flatten()) \
         .filter(ee.Filter.notNull(['system:time_start']))
     return coll
+
 
 # Monthly mean baseline 1981-2015
 def build_monthly_mean_image(monthly_rainfall):
@@ -82,6 +115,7 @@ def build_monthly_mean_image(monthly_rainfall):
     ])
     return monthly_mean_image
 
+
 # Safely select a band or return zero image
 def safe_select(image, band_name):
     bands = image.bandNames()
@@ -92,6 +126,7 @@ def safe_select(image, band_name):
             ee.Image.constant(0).rename(band_name)
         )
     )
+
 
 # Build anomaly collection
 def build_anomaly_collection(monthly_rainfall, monthly_mean_image):
@@ -111,6 +146,7 @@ def build_anomaly_collection(monthly_rainfall, monthly_mean_image):
         .filter(ee.Filter.notNull(['system:time_start'])) \
         .map(anomaly_fn)
 
+
 # Build PNR collection
 def build_pnr_collection(monthly_rainfall, monthly_mean_image):
     def pnr_fn(img):
@@ -128,6 +164,7 @@ def build_pnr_collection(monthly_rainfall, monthly_mean_image):
         .map(lambda i: ee.Image(filter_empty(i))) \
         .filter(ee.Filter.notNull(['system:time_start'])) \
         .map(pnr_fn)
+
 
 # Build SPI collection
 def build_spi_collection(monthly_rainfall, monthly_mean_image):
@@ -163,6 +200,7 @@ def build_spi_collection(monthly_rainfall, monthly_mean_image):
         .filter(ee.Filter.notNull(['system:time_start'])) \
         .map(spi_fn)
 
+
 # Heavy rain days
 def build_heavy_rain(roi):
     chirps = ee.ImageCollection("UCSB-CHG/CHIRPS/DAILY") \
@@ -171,9 +209,11 @@ def build_heavy_rain(roi):
     heavy = chirps.map(lambda img: img.gt(50).rename('heavyRain').copyProperties(img, ['system:time_start']))
     return heavy
 
+
 # Annual drought & flood frequency
 def build_annual_drought_flood(spi_collection):
     years = ee.List.sequence(2015, 2025)
+
     def per_year(y):
         y = ee.Number(y)
         yearly_spi = spi_collection.filter(ee.Filter.eq('year', y))
@@ -182,7 +222,9 @@ def build_annual_drought_flood(spi_collection):
         return drought_mask.addBands(flood_mask).set('year', y).set(
             'system:time_start', ee.Date.fromYMD(y, 1, 1).millis()
         )
+
     return ee.ImageCollection(years.map(per_year))
+
 
 # Utility to get tile URL
 def get_tile_url_for_image(img, vis_params):
